@@ -1,20 +1,33 @@
+use std::os::fd::RawFd;
+
+use crate::child::generate_child_process;
 use crate::cli::Args;
 use crate::config::ContainerOpts;
 use crate::errors::Errcode;
 use crate::mounts::clean_mounts;
+use crate::namespace::handle_child_uid_map;
 use nix::sys::utsname::uname;
+use nix::unistd::Pid;
 use scan_fmt::scan_fmt;
 pub struct Container {
+    sockets: (RawFd, RawFd),
     config: ContainerOpts,
+    child_pid: Option<Pid>,
 }
 
 impl Container {
     pub fn new(args: Args) -> Result<Container, Errcode> {
-        let config = ContainerOpts::new(args.command, args.uid, args.mount_dir)?;
-        Ok(Container { config })
+        let (config, sockets) = ContainerOpts::new(args.command, args.uid, args.mount_dir)?;
+        Ok(Container {
+            sockets,
+            config,
+            child_pid: None,
+        })
     }
 
     pub fn create(&mut self) -> Result<(), Errcode> {
+        let pid = generate_child_process(self.config.clone())?;
+        handle_child_uid_map(pid, self.sockets.0)?;
         log::debug!("Creation finished");
         Ok(())
     }

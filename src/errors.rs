@@ -9,6 +9,10 @@ pub enum Errcode {
     HostnameError(u8),
     RngError,
     MountsError(u8),
+    NamespaceError(u8),
+    SocketError(u8),
+    ChildProcessError(u8),
+    CapabilitiesError(u8),
 }
 
 impl Errcode {

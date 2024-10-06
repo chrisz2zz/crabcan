@@ -12,6 +12,9 @@ mod container;
 mod errors;
 mod hostname;
 mod mounts;
+mod namespace;
+mod ipc;
+mod capabilities;
 
 fn main() {
     match cli::parse_args() {
