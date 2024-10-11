@@ -1,19 +1,24 @@
+use std::ffi::CString;
+
 use nix::sched::{clone, CloneFlags};
 use nix::sys::signal::Signal;
+use nix::unistd::execve;
 use nix::unistd::{close, Pid};
 
 use crate::capabilities::setcapabilities;
 use crate::mounts::setmountpoint;
 use crate::namespace::userns;
+use crate::syscalls::setsyscalls;
 use crate::{config::ContainerOpts, errors::Errcode, hostname::set_container_hostname};
 
 const STACK_SIZE: usize = 1024 * 1024;
 
 fn set_container_configurations(config: &ContainerOpts) -> Result<(), Errcode> {
     set_container_hostname(&config.hostname)?;
-    setmountpoint(&config.mount_dir)?;
+    setmountpoint(&config.mount_dir, &config.addpaths)?;
     userns(config.fd, config.uid)?;
     setcapabilities()?;
+    setsyscalls()?;
     Ok(())
 }
 
@@ -35,7 +40,15 @@ fn child(config: ContainerOpts) -> isize {
         config.path.to_str().unwrap(),
         config.argv
     );
-    0
+
+    let recode = match execve::<CString, CString>(&config.path, &config.argv, &[]) {
+        Ok(_) => 0,
+        Err(e) => {
+            log::error!("Error while trying to perform execve: {:?}", e);
+            -1
+        }
+    };
+    recode
 }
 
 pub fn generate_child_process(config: ContainerOpts) -> Result<Pid, Errcode> {

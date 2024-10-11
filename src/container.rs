@@ -1,4 +1,5 @@
 use std::os::fd::RawFd;
+use std::path::PathBuf;
 
 use crate::child::generate_child_process;
 use crate::cli::Args;
@@ -6,6 +7,7 @@ use crate::config::ContainerOpts;
 use crate::errors::Errcode;
 use crate::mounts::clean_mounts;
 use crate::namespace::handle_child_uid_map;
+use crate::resources::{clean_cgroups, restrict_resources};
 use nix::sys::utsname::uname;
 use nix::unistd::Pid;
 use scan_fmt::scan_fmt;
@@ -17,7 +19,22 @@ pub struct Container {
 
 impl Container {
     pub fn new(args: Args) -> Result<Container, Errcode> {
-        let (config, sockets) = ContainerOpts::new(args.command, args.uid, args.mount_dir)?;
+        let mut addpaths = vec![];
+        for ap_pair in args.addpaths.iter() {
+            let mut pair = ap_pair.to_str().unwrap().split(":");
+            let frompath = PathBuf::from(pair.next().unwrap())
+                .canonicalize()
+                .expect("Cannot canonicalize path")
+                .to_path_buf();
+            let mntpath = PathBuf::from(pair.next().unwrap())
+                .strip_prefix("/")
+                .expect("Cannot strip prefix from path")
+                .to_path_buf();
+            addpaths.push((frompath, mntpath));
+        }
+
+        let (config, sockets) =
+            ContainerOpts::new(args.command, args.uid, args.mount_dir, addpaths)?;
         Ok(Container {
             sockets,
             config,
@@ -27,6 +44,7 @@ impl Container {
 
     pub fn create(&mut self) -> Result<(), Errcode> {
         let pid = generate_child_process(self.config.clone())?;
+        restrict_resources(&self.config.hostname, pid)?;
         handle_child_uid_map(pid, self.sockets.0)?;
         log::debug!("Creation finished");
         Ok(())
@@ -35,6 +53,10 @@ impl Container {
     pub fn clean_exit(&mut self) -> Result<(), Errcode> {
         log::debug!("Cleaning container");
         clean_mounts(&self.config.mount_dir)?;
+        if let Err(e) = clean_cgroups(&self.config.hostname) {
+            log::error!("Cgroups cleaning failed: {}", e);
+            return Err(e);
+        }
         Ok(())
     }
 }

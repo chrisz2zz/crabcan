@@ -9,7 +9,10 @@ use std::{
     path::PathBuf,
 };
 
-pub fn setmountpoint(mount_dir: &PathBuf) -> Result<(), Errcode> {
+pub fn setmountpoint(
+    mount_dir: &PathBuf,
+    addpahts: &Vec<(PathBuf, PathBuf)>,
+) -> Result<(), Errcode> {
     log::debug!("Setting mount points ...");
     let new_root = PathBuf::from(format!("/tmp/crabcan.{}", random_string(12)));
     log::debug!(
@@ -22,6 +25,13 @@ pub fn setmountpoint(mount_dir: &PathBuf) -> Result<(), Errcode> {
         &new_root,
         vec![MsFlags::MS_REC, MsFlags::MS_PRIVATE],
     )?;
+
+    log::debug!("Mounting additional paths");
+    for (inpath, mntpath) in addpahts.iter() {
+        let outpath = new_root.join(mntpath);
+        create_directory(&outpath)?;
+        mount_directory(Some(inpath), &outpath, vec![MsFlags::MS_PRIVATE, MsFlags::MS_BIND])?;
+    }
 
     log::debug!("Pivoting root");
     let old_root_tail = format!("oldroot.{}", random_string(6));

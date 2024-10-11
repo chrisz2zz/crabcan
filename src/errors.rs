@@ -13,6 +13,8 @@ pub enum Errcode {
     SocketError(u8),
     ChildProcessError(u8),
     CapabilitiesError(u8),
+    SyscallsError(u8),
+    ResourcesError(u8),
 }
 
 impl Errcode {
